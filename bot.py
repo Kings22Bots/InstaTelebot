@@ -9,7 +9,7 @@ import glob
 apihelper.CONNECT_TIMEOUT = 9999
 apihelper.READ_TIMEOUT = 9999
 
-TOKEN = "YOUR_BOT_TOKEN"
+TOKEN = "8636548271:AAEaR2ihZn57PIZKfWxATk57Zha_SBENunU"
 bot = telebot.TeleBot(TOKEN)
 
 url_cache = {}
