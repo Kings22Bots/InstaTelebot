@@ -142,6 +142,7 @@ def handle_download(call):
         'quiet': True,
         'concurrent_fragment_downloads': 5,
         'merge_output_format': merge_fmt 
+        'cookiefile': 'cookies.txt'
     }
 
     os.makedirs('downloads', exist_ok=True)
