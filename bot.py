@@ -34,7 +34,11 @@ def handle_message(message):
 
     status_msg = bot.reply_to(message, "🔍 Scanning terminal formats...")
 
-    ydl_opts = {'quiet': True, 'noplaylist': True}
+    ydl_opts = {
+    'quiet': True,
+    'noplaylist': True,
+    'cookiefile': 'cookies.txt'
+    }
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
