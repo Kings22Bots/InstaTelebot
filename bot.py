@@ -7,7 +7,7 @@ from telegram.ext import Application, MessageHandler, filters, ContextTypes
 
 # --- CONFIG ---
 # Get your token from Railway Environment Variables
-TOKEN = os.getenv('8636548271:AAEwAzj_qF3yS2opnixI_GbviPUpR6sobCo')
+TOKEN = os.getenv('BOT_TOKEN')
 DOWNLOAD_DIR = 'downloads'
 COOKIES = 'cookies.txt'
 
