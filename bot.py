@@ -70,5 +70,5 @@ def main():
     print("Bot is live and PUBLIC on Railway!")
     app.run_polling()
 
-if name == 'main':
+if __name__ == '__main__':
     main()
