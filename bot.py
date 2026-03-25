@@ -15,11 +15,10 @@ USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 async def download_media(url):
-    """Downloads highest quality media using dual engines."""
     if not os.path.exists(DOWNLOAD_DIR):
         os.makedirs(DOWNLOAD_DIR)
     
-    # 1. gallery-dl: Focuses on original image quality
+    # 1. gallery-dl for images
     g_cmd = [
         'gallery-dl',
         '--cookies', COOKIES,
@@ -29,20 +28,19 @@ async def download_media(url):
         url
     ]
     
-    # 2. yt-dlp: Unlocked for maximum quality (1080p+)
+    # 2. yt-dlp: Raw highest quality, merged into MKV to prevent codec crashes
     y_cmd = [
         'yt-dlp',
         '--cookies', COOKIES,
         '--user-agent', USER_AGENT,
-        '-f', 'bv*+ba/b',               # Grabs the highest quality video and audio
-        '--merge-output-format', 'mp4', # Forces the final merged file to be an MP4
+        '-f', 'bv*+ba/b',               # Grabs maximum video and audio
+        '--merge-output-format', 'mkv', # The universal container to prevent merge failures
         '-P', DOWNLOAD_DIR,
         '-o', 'vid_%(id)s.%(ext)s',
         '--no-playlist',
         url
     ]
 
-    # Execute both (errors are ignored so one can fail while other succeeds)
     subprocess.run(g_cmd, capture_output=True)
     subprocess.run(y_cmd, capture_output=True)
 
@@ -51,20 +49,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "instagram.com" not in url:
         return
 
-    # Inform the user
-    status = await update.message.reply_text("🔍 Extracting highest-quality media...")
+    status = await update.message.reply_text("🔍 Extracting raw highest-quality media...")
 
-    # Wipe previous downloads to prevent mixing posts
     for f in glob.glob(f'{DOWNLOAD_DIR}/*'):
         try: os.remove(f)
         except: pass
     
-    # Run downloaders
     await download_media(url)
 
-    # Gather files
     media_group = []
-    # Sort to keep carousel order as much as possible
     downloaded_files = sorted(glob.glob(f'{DOWNLOAD_DIR}/*'))
 
     for path in downloaded_files:
@@ -72,28 +65,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             if ext.endswith(('.jpg', '.jpeg', '.png', '.webp')):
                 media_group.append(InputMediaPhoto(open(path, 'rb')))
-            elif ext.endswith(('.mp4', '.mov', '.m4v', '.mkv', '.webm')): # Added mkv/webm just in case merging fails
+            # Ensured mkv and webm are accepted by Telegram here:
+            elif ext.endswith(('.mp4', '.mov', '.m4v', '.mkv', '.webm')): 
                 media_group.append(InputMediaVideo(open(path, 'rb')))
         except Exception as e:
             logging.error(f"Error opening file {path}: {e}")
 
-    # Send grouped media
     if media_group:
-        # Telegram limit is 10 items per album
         for i in range(0, len(media_group), 10):
             await update.message.reply_media_group(media_group[i:i+10])
     else:
-        await update.message.reply_text("❌ Failed to grab media. Ensure your cookies.txt is valid and the post is public.")
+        await update.message.reply_text("❌ Failed to grab media. Ensure cookies.txt is valid.")
 
     await status.delete()
 
 def main():
-    # Increase connect_timeout for large video uploads
     app = Application.builder().token(TOKEN).build()
-    
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
-    print("🚀 Bot is running with unlocked quality... Send me an Instagram link!")
+    print("🚀 Bot is running with raw quality extraction...")
     app.run_polling()
 
 if __name__ == '__main__':
