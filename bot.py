@@ -8,14 +8,14 @@ import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, InputMediaVideo
 from telegram.ext import Application, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
-# Use Environment Variables for the Token on Railway
+# --- CONFIGURATION ---
 TOKEN = os.getenv('BOT_TOKEN', '8636548271:AAEwAzj_qF3yS2opnixI_GbviPUpR6sobCo')
 DOWNLOAD_DIR = '/tmp/downloads'
 COOKIES = 'cookies.txt'
 
 logging.basicConfig(level=logging.INFO)
 
-# Anti-Detection: Mimic your iQOO Z9x device
+# --- ANTI-DETECTION HEADERS ---
 UA_STRING = 'Mozilla/5.0 (Linux; Android 14; iQOO Z9x) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36'
 
 STEALTH_ARGS = [
@@ -26,38 +26,55 @@ STEALTH_ARGS = [
 ]
 
 def get_formats(url):
-    """Extracts all qualities including 4K, HDR, WebM, and MKV."""
+    """Aggressively extracts qualities, handling hidden resolutions and 4K/HDR."""
     cmd = [
         'yt-dlp', '--cookies', COOKIES, *STEALTH_ARGS,
         '--dump-json', '--no-playlist', url
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0: return None
+    if result.returncode != 0: 
+        logging.error(f"yt-dlp JSON Error: {result.stderr}")
+        return None
     
     try:
         data = json.loads(result.stdout)
         formats = []
-        for f in data.get('formats', []):
-            if f.get('vcodec') != 'none' and f.get('height'):
-                height = f.get('height')
-                fps = f.get('fps')
-                ext = f.get('ext', 'mp4')
-                dynamic_range = f.get('dynamic_range', '')
-                
-                # Format the label (e.g., "1080p60 HDR10+ (webm)")
-                fps_str = f"{int(fps)}" if fps and fps >= 50 else ""
-                hdr_str = f" {dynamic_range}" if dynamic_range and 'HDR' in dynamic_range else ""
-                label = f"{height}p{fps_str}{hdr_str} ({ext})"
-                
-                formats.append({
-                    'label': label, 
-                    'id': f['format_id'], 
-                    'h': height
-                })
         
-        # Remove duplicates, keeping the highest quality ones
+        for f in data.get('formats', []):
+            ext = f.get('ext', '').lower()
+            vcodec = f.get('vcodec', 'none')
+            
+            # Skip pure audio or image streams
+            if (vcodec == 'none' and f.get('acodec') != 'none') or ext in ['jpg', 'webp', 'png', 'm4a']:
+                continue
+            
+            height = f.get('height')
+            width = f.get('width')
+            fps = f.get('fps')
+            dynamic_range = f.get('dynamic_range', '')
+            format_id = f.get('format_id')
+            
+            display_res = height if height else width
+            
+            # If resolution exists, build a detailed label
+            if display_res:
+                fps_str = f" {int(fps)}fps" if fps and fps >= 50 else ""
+                hdr_str = f" HDR" if dynamic_range and 'HDR' in dynamic_range else ""
+                label = f"{display_res}p{fps_str}{hdr_str} ({ext})"
+                formats.append({'label': label, 'id': format_id, 'h': display_res})
+                
+            # Fallback: if resolution is hidden but it's a valid video file
+            elif ext in ['mp4', 'webm', 'mkv']:
+                label = f"Standard Quality ({ext})"
+                formats.append({'label': label, 'id': format_id, 'h': 0})
+        
+        if not formats: 
+            return None
+            
+        # Remove duplicates, keep highest quality at the top
         unique = {f['label']: f for f in formats}.values()
-        return sorted(unique, key=lambda x: x['h'], reverse=True)
+        return sorted(unique, key=lambda x: x['h'] if x['h'] else 0, reverse=True)
+        
     except Exception as e:
         logging.error(f"Format extraction error: {e}")
         return None
@@ -66,23 +83,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
     if "instagram.com" not in url: return
 
-    wait_msg = await update.message.reply_text("🔎 Scanning for 4K/HDR qualities safely...")
+    wait_msg = await update.message.reply_text("🔎 Scanning for qualities (4K/HDR)...")
     
-    # 1. Add random delay to prevent automated behavior block
+    # Random delay to simulate human timing
     await asyncio.sleep(random.uniform(2.0, 4.5))
     
     formats = await asyncio.to_thread(get_formats, url)
     
     if not formats:
-        await wait_msg.edit_text("📸 No video formats found. Attempting direct grab...")
-        await start_download(update.message, url, "best", wait_msg, context)
+        await wait_msg.edit_text("📸 No specific video qualities found. Attempting direct grab...")
+        await start_download(update.message, url, "best", wait_msg, context, "mp4")
         return
 
     keyboard = []
     for f in formats:
-        # Save URL and format extension to context to bypass Telegram button size limits
         btn_id = f['id']
-        context.user_data[btn_id] = {'url': url, 'ext': f['label'].split('(')[-1].replace(')', '')}
+        ext = f['label'].split('(')[-1].replace(')', '')
+        # Store data in context to bypass Telegram's 64-byte callback limit
+        context.user_data[btn_id] = {'url': url, 'ext': ext}
         keyboard.append([InlineKeyboardButton(f"Download {f['label']}", callback_data=f"dl|{btn_id}")])
 
     await wait_msg.edit_text("✅ Select Quality:", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -100,24 +118,22 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await start_download(query.message, data['url'], format_id, query.message, context, data['ext'])
 
-async def start_download(message, url, format_id, status_msg, context, target_ext="mp4"):
+async def start_download(message, url, format_id, status_msg, context, target_ext):
     if not os.path.exists(DOWNLOAD_DIR): os.makedirs(DOWNLOAD_DIR)
     for f in glob.glob(f'{DOWNLOAD_DIR}/*'): 
         try: os.remove(f)
         except: pass
 
-    await status_msg.edit_text(f"⏳ Downloading {format_id}... preserving original quality.")
+    await status_msg.edit_text(f"⏳ Downloading... preserving original quality.")
 
-    # We use MKV as the universal merge format if WebM is selected, 
-    # to avoid codec clashes when combining weird video and audio formats.
+    # Prevent WebM merging errors by wrapping in MKV container
     merge_format = 'mkv' if target_ext == 'webm' else 'mp4'
 
     y_cmd = [
         'yt-dlp', '--cookies', COOKIES, *STEALTH_ARGS,
         '-f', f"{format_id}+bestaudio/best",
         '--merge-output-format', merge_format,
-        # Postprocessor ensures audio works without downscaling your 4K video
-        '--postprocessor-args', 'ffmpeg:-c:a aac', 
+        '--postprocessor-args', 'ffmpeg:-c:a aac', # Ensures audio plays everywhere
         '-P', DOWNLOAD_DIR, '-o', 'vid_%(id)s.%(ext)s', url
     ]
     
@@ -146,15 +162,15 @@ async def start_download(message, url, format_id, status_msg, context, target_ex
                 await message.reply_media_group(media[i:i+10])
             await status_msg.delete()
         except Exception as e:
-            await status_msg.edit_text(f"❌ Telegram upload failed. It might be too large (>50MB).")
+            await status_msg.edit_text(f"❌ Upload failed. File might exceed Telegram's 50MB bot limit.")
     else:
-        await status_msg.edit_text("❌ Download failed. Session may be blocked by Instagram.")
+        await status_msg.edit_text("❌ Download failed. Try replacing your cookies.txt.")
 
 def main():
     app = Application.builder().token(TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(CallbackQueryHandler(button_callback))
-    print("🚀 Bot is running with 4K/WebM selection and Anti-Detection...")
+    print("🚀 Bot is running with the aggressive scanner and 4K support...")
     app.run_polling()
 
 if __name__ == '__main__':
