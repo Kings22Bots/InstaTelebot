@@ -2,8 +2,6 @@ import os
 import glob
 import subprocess
 import logging
-import random
-import asyncio
 from telegram import Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 
@@ -11,18 +9,7 @@ from telegram.ext import Application, MessageHandler, filters, ContextTypes
 TOKEN = '8636548271:AAEwAzj_qF3yS2opnixI_GbviPUpR6sobCo'  
 DOWNLOAD_DIR = 'temp_downloads'
 COOKIES = 'cookies.txt'
-
-# --- ANTI-DETECTION HEADERS ---
-# Spoofing a standard mobile device
-UA_STRING = 'Mozilla/5.0 (Linux; Android 14; iQOO Z9x) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36'
-
-STEALTH_ARGS = [
-    '--header', f'User-Agent: {UA_STRING}',
-    '--header', 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-    '--header', 'Accept-Language: en-US,en;q=0.9',
-    '--header', 'Sec-Ch-Ua-Platform: "Android"',
-    '--header', 'Sec-Fetch-Mode: navigate'
-]
+USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
 
 # Setup logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -31,15 +18,12 @@ async def download_media(url):
     """Downloads highest quality media using dual engines."""
     if not os.path.exists(DOWNLOAD_DIR):
         os.makedirs(DOWNLOAD_DIR)
-        
-    # Anti-Detection: Random delay to mimic human behavior
-    await asyncio.sleep(random.uniform(2.5, 5.5))
     
     # 1. gallery-dl: Focuses on original image quality
     g_cmd = [
         'gallery-dl',
         '--cookies', COOKIES,
-        '--user-agent', UA_STRING, # Added stealth User-Agent
+        '--user-agent', USER_AGENT,
         '--directory', DOWNLOAD_DIR,
         '--filename', 'img_{id}_{num}.{extension}',
         url
@@ -49,8 +33,7 @@ async def download_media(url):
     y_cmd = [
         'yt-dlp',
         '--cookies', COOKIES,
-        *STEALTH_ARGS, # Added stealth headers
-        # YOUR UNTOUCHED VIDEO SETTINGS BELOW:
+        '--user-agent', USER_AGENT,
         '-f', 'bestvideo[ext=mp4]+bestaudio[m4a]/best[ext=mp4]/best',
         '-P', DOWNLOAD_DIR,
         '-o', 'vid_%(id)s.%(ext)s',
@@ -58,9 +41,9 @@ async def download_media(url):
         url
     ]
 
-    # Execute both using to_thread to prevent the bot from freezing
-    await asyncio.to_thread(subprocess.run, g_cmd, capture_output=True)
-    await asyncio.to_thread(subprocess.run, y_cmd, capture_output=True)
+    # Execute both (errors are ignored so one can fail while other succeeds)
+    subprocess.run(g_cmd, capture_output=True)
+    subprocess.run(y_cmd, capture_output=True)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
@@ -68,7 +51,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Inform the user
-    status = await update.message.reply_text("🔍 Extracting high-quality media safely...")
+    status = await update.message.reply_text("🔍 Extracting high-quality media...")
 
     # Wipe previous downloads to prevent mixing posts
     for f in glob.glob(f'{DOWNLOAD_DIR}/*'):
@@ -109,9 +92,8 @@ def main():
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("🚀 Bot is running with anti-detection...")
+    print("🚀 Bot is running... Send me an Instagram link!")
     app.run_polling()
 
 if __name__ == '__main__':
     main()
-    
