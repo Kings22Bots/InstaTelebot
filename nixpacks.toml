@@ -1,15 +1,2 @@
-# This ensures Nixpacks sets up the Python environment correctly
-providers = ["python"]
-
 [phases.setup]
-# Only list the system tools. DO NOT list python or pip here
-# as the provider handles them.
-nixPkgs = ["ffmpeg", "gallery-dl"]
-
-[phases.install]
-# The provider handles this, but we can be explicit if needed:
-cmds = ["pip install -r requirements.txt"]
-
-[phases.start]
-# Points to your renamed script
-cmd = "python bot.py"
+nixPkgs = ["...", "ffmpeg"]
