@@ -28,13 +28,12 @@ async def download_media(url):
         url
     ]
     
-    # 2. yt-dlp: Raw highest quality, merged into MKV to prevent codec crashes
+    # 2. yt-dlp: ONLY the maximum quality video stream. No audio, no merging.
     y_cmd = [
         'yt-dlp',
         '--cookies', COOKIES,
         '--user-agent', USER_AGENT,
-        '-f', 'bv*+ba/b',               # Grabs maximum video and audio
-        '--merge-output-format', 'mkv', # The universal container to prevent merge failures
+        '-f', 'bv*', # Grabs the raw best video stream only
         '-P', DOWNLOAD_DIR,
         '-o', 'vid_%(id)s.%(ext)s',
         '--no-playlist',
@@ -49,7 +48,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "instagram.com" not in url:
         return
 
-    status = await update.message.reply_text("🔍 Extracting raw highest-quality media...")
+    status = await update.message.reply_text("🔍 Extracting raw high-quality video stream...")
 
     for f in glob.glob(f'{DOWNLOAD_DIR}/*'):
         try: os.remove(f)
@@ -65,7 +64,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             if ext.endswith(('.jpg', '.jpeg', '.png', '.webp')):
                 media_group.append(InputMediaPhoto(open(path, 'rb')))
-            # Ensured mkv and webm are accepted by Telegram here:
             elif ext.endswith(('.mp4', '.mov', '.m4v', '.mkv', '.webm')): 
                 media_group.append(InputMediaVideo(open(path, 'rb')))
         except Exception as e:
@@ -82,9 +80,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("🚀 Bot is running with raw quality extraction...")
+    print("🚀 Bot is running (Video-Only Mode)...")
     app.run_polling()
 
 if __name__ == '__main__':
     main()
-    
