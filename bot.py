@@ -8,7 +8,7 @@ from telegram import Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 
 # --- CONFIGURATION ---
-TOKEN = os.getenv('BOT_TOKEN', '8636548271:AAEwAzj_qF3yS2opnixI_GbviPUpR6sobCo')
+TOKEN = '8636548271:AAEwAzj_qF3yS2opnixI_GbviPUpR6sobCo'
 DOWNLOAD_DIR = '/tmp/downloads'
 COOKIES = 'cookies.txt'
 
@@ -18,14 +18,17 @@ logging.basicConfig(level=logging.INFO)
 # Perfectly synced to your Kiwi Browser session
 UA_STRING = 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36'
 
+# Upgraded syntax with Origin and Referer to bypass GraphQL CORS checks
 STEALTH_ARGS = [
-    '--header', f'User-Agent: {UA_STRING}',
-    '--header', 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-    '--header', 'Accept-Language: en-US,en;q=0.9',
-    '--header', 'Sec-Ch-Ua-Platform: "Android"',
-    '--header', 'Sec-Fetch-Dest: document',
-    '--header', 'Sec-Fetch-Mode: navigate',
-    '--header', 'Sec-Fetch-Site: none',
+    '--user-agent', UA_STRING,
+    '--add-header', 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    '--add-header', 'Accept-Language: en-US,en;q=0.9',
+    '--add-header', 'Sec-Ch-Ua-Platform: "Android"',
+    '--add-header', 'Sec-Fetch-Dest: document',
+    '--add-header', 'Sec-Fetch-Mode: navigate',
+    '--add-header', 'Sec-Fetch-Site: same-origin',
+    '--add-header', 'Origin: https://www.instagram.com',
+    '--add-header', 'Referer: https://www.instagram.com/',
 ]
 
 async def download_media(url):
@@ -58,10 +61,11 @@ async def download_media(url):
     g_cmd = [
         'gallery-dl', '--cookies', COOKIES, 
         '--user-agent', UA_STRING, 
+        '--add-header', 'Referer: https://www.instagram.com/',
         '--directory', DOWNLOAD_DIR, url
     ]
 
-    # Run downloads and capture output for debugging
+    # Run downloads concurrently and capture output for debugging
     g_res, y_play_res, y_raw_res = await asyncio.gather(
         asyncio.to_thread(subprocess.run, g_cmd, capture_output=True, text=True),
         asyncio.to_thread(subprocess.run, y_cmd_playable, capture_output=True, text=True),
@@ -78,8 +82,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
     if "instagram.com" not in url: return
 
-    status = await update.message.reply_text("🛡️ Syncing session & fetching Dual Formats...")
+    status = await update.message.reply_text("🛡️ Bypassing security & fetching Playable + Raw Formats...")
     
+    # Clean up old files
     for f in glob.glob(f'{DOWNLOAD_DIR}/*'): 
         try: os.remove(f)
         except: pass
@@ -91,7 +96,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     playable_media = []
     document_media = []
     
-    # Strict Sorting
+    # Strict Sorting Logic
     for path in files:
         ext = path.lower()
         filename = os.path.basename(path)
@@ -103,7 +108,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif filename.startswith('raw_'):
             document_media.append(path)
 
-    # 1. Send Playable Media
+    # 1. Send Playable Media (Photos & Inline Videos)
     if playable_media:
         try:
             for i in range(0, len(playable_media), 10):
@@ -111,7 +116,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logging.error(f"Playable Upload Error: {e}")
 
-    # 2. Send Raw Document
+    # 2. Send Raw Document (The untouch 1080p/4K Original)
     if document_media:
         for doc_path in document_media:
             try:
@@ -130,8 +135,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("🚀 Dual-Fetch Mode is LIVE with Custom Fingerprint...")
+    print("🚀 Dual-Fetch Mode is LIVE with Full HTTP Routing...")
     app.run_polling()
 
 if __name__ == '__main__':
     main()
+    
